@@ -12,13 +12,9 @@ services:
     volumes:
       - ./:/app
 
-  arangodb:
-    image: arangodb:3.11.3
-    container_name: bottlesite_arango_3.11.3_container
-    # restart: always
-    ports:
-      - 8529:8529
-    environment:
-      - ARANGO_NO_AUTH=1
+  sqlite:
+    image: nouchka/sqlite3
+    container_name: bottlesite_sqlite_container
     volumes:
-      - ./arangodb:/var/lib/arangodb3
+      - ./sqlite_data:/data
+    command: tail -f /dev/null

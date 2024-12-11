@@ -76,9 +76,7 @@ def serve_image(item_splash_image):
 @get("/")
 def home():
     try:
-        x.setup_users()
-        x.setup_collection()
-        # Fetch items from the ArangoDB collection 'items'
+        x.setup_database
         query = {
             "query": "FOR item IN items LET isBlocked = HAS(item, 'blocked') ? item.blocked : false UPDATE item WITH { blocked: isBlocked } IN items SORT item.item_created_at LIMIT @limit RETURN item",
             "bindVars": {"limit": x.ITEMS_PER_PAGE}
@@ -546,26 +544,6 @@ def login_post():
     except Exception as ex:
         print("An error occurred:", ex)
         return "An error occurred while processing your request"
-
-# ##############################
-# @get("/profile")
-# def _():
-#     try:
-#         x.no_cache()
-#         x.validate_user_logged()
-#         db = x.db()
-#         q = db.execute("SELECT * FROM items ORDER BY item_created_at LIMIT 0, ?", (x.ITEMS_PER_PAGE,))
-#         items = q.fetchall()
-#         ic(items)    
-#         return template("profile.html", is_logged=True, items=items)
-#     except Exception as ex:
-#         ic(ex)
-#         response.status = 303 
-#         response.set_header('Location', '/login')
-#         return
-#     finally:
-#         if "db" in locals(): db.close()
-
 
 ##############################
 @get("/logout")

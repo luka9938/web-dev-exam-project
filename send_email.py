@@ -4,8 +4,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 def send_verification_email(receiver_email, verification_code):
-    sender_email = "skroyer09@gmail.com"
-    password = "vkxq xwhj yaxn rqjs"
+    sender_email = 'joeybidenisbased@gmail.com'
+    password = 'tdvi euik qgsa bzdf'
 
     base_url = f"{request.urlparts.scheme}://{request.urlparts.netloc}/"
 

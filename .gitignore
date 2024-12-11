@@ -9,3 +9,4 @@ include
 .gitignore
 lib
 pyvenv.cfg
+arangodb
