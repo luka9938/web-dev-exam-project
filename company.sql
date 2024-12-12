@@ -59,6 +59,13 @@ INSERT INTO items VALUES
 ("5dbce622fa2b4f22a6f6957d07ff4959", "Church of Our Saviour", "5dbce622fa2b4f22a6f6957d07ff4959.webp", 55.6732, 12.5986, 4.3, 985, 9, 0),
 ("5dbce622fa2b4f22a6f6957d07ff4910", "Round Tower", "5dbce622fa2b4f22a6f6957d07ff4910.webp",  55.6813, 12.5759, 4.8, 1200, 10, 0);
 
+
+SELECT * FROM items;
+
+ALTER TABLE items ADD COLUMN blocked BOOLEAN DEFAULT 0;
+ALTER TABLE items ADD COLUMN is_booked BOOLEAN DEFAULT 0;
+
+
 -- (page_number - 1) * items_per_page
 -- (1 - 1) * 3 = 10 1 2
 -- (2 - 1) * 3 = 3 4 5

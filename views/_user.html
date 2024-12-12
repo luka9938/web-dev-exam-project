@@ -1,14 +1,14 @@
 % import x
 
-<div id="{{user['_key']}}" class="user grid grid-cols-3">
-    <form id="user_{{user['_key']}}">
+<div id="{{user['user_pk']}}" class="user grid grid-cols-3">
+    <form id="user_{{user['user_pk']}}">
         <input name="username" value="{{user['username']}}" 
         mix-check="{{x.USER_USERNAME_REGEX}}" disabled> 
         <input name="user_email" value="{{user['user_email']}}" 
         mix-check="{{x.EMAIL_REGEX}}" disabled>
     </form>
     <button
-    mix-delete="/users/{{user['_key']}}"
+    mix-delete="/users/{{user['user_pk']}}"
     mix-default="Delete"
     mix-await="Deleting...">
     Delete

@@ -13,6 +13,7 @@ import string
 from send_email import send_verification_email
 import os
 import time
+import sqlite3
 
 def generate_verification_code():
     return ''.join(random.choices(string.ascii_letters + string.digits, k=6))
@@ -76,20 +77,15 @@ def serve_image(item_splash_image):
 @get("/")
 def home():
     try:
-        x.setup_database
-        query = {
-            "query": "FOR item IN items LET isBlocked = HAS(item, 'blocked') ? item.blocked : false UPDATE item WITH { blocked: isBlocked } IN items SORT item.item_created_at LIMIT @limit RETURN item",
-            "bindVars": {"limit": x.ITEMS_PER_PAGE}
-        }
-        result = x.arango(query)
-        items = result.get("result", [])
-        ic(items)
+        x.setup_database()
+        # Fetch items from the ArangoDB collection 'items'
+        conn = x.db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM items ORDER BY item_created_at LIMIT ?", (x.ITEMS_PER_PAGE,))
+        items = cursor.fetchall()
+        conn.close()
         is_logged = validate_user_logged()
-        print("user is logged in?: ")
-        print(is_logged)
         is_role = validate_user_role()
-        print("is user a partner?: ")
-        print(is_role)
         is_admin_role = validate_admin()
 
         return template("index.html", items=items, mapbox_token=credentials.mapbox_token, is_logged=is_logged, is_role=is_role, is_admin_role=is_admin_role)
@@ -134,10 +130,10 @@ def _():
         ic(email) # this is ice cream it displays error codes when something goes wrong
         
         res = {
-            "query": "FOR user IN users FILTER user.user_email == @user_email RETURN user",
+            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
             "bindVars": {"user_email": email}
         }
-        query_result = x.arango(res)
+        query_result = x.db(res)
         users = query_result.get("result", [])
 
         if users:
@@ -157,8 +153,8 @@ def _():
                 "verification_code": verification_code, 
                 "verified": False,
                 "is_deleted": False} # Save the hashed password
-        res = {"query": "INSERT @doc IN users RETURN NEW", "bindVars": {"doc": user}} # inserts a user via AQL query language, via the db method in the x.py file 
-        item = x.arango(res)
+        res = {"query": "INSERT :doc IN users RETURN NEW", "bindVars": {"doc": user}} # inserts a user via AQL query language, via the db method in the x.py file 
+        item = x.db(res)
         send_verification_email(email, verification_code)
         response.status = 303
         response.set_header('Location', '/login')
@@ -179,10 +175,10 @@ def verify():
     try:
         verification_code = request.query.code
         res = {
-            "query": "FOR user IN users FILTER user.verification_code == @code RETURN user",
+            "query": "FOR user IN users FILTER user.verification_code == :code RETURN user",
             "bindVars": {"code": verification_code}
         }
-        query_result = x.arango(res)
+        query_result = x.db(res)
         users = query_result.get("result", [])
 
         if not users:
@@ -191,10 +187,10 @@ def verify():
         user = users[0]
         user["verified"] = True
         update_res = {
-            "query": "UPDATE @user WITH {verified: true} IN users RETURN NEW",
+            "query": "UPDATE :user WITH {verified: true} IN users RETURN NEW",
             "bindVars": {"user": user}
         }
-        x.arango(update_res)
+        x.db(update_res)
 
         return "You email has been verified. You can now log in at <a href='/login'>Login</a>."
     except Exception as ex:
@@ -211,8 +207,8 @@ def _():
         ic(username) # this is ice cream it displays error codes when something goes wrong
         ic(email) # this is ice cream it displays error codes when something goes wrong
         user = {"username":username, "email":email} # defines a user by saving user as a document
-        res = {"query":"INSERT @doc IN users RETURN NEW", "bindVars":{"doc":user}} # inserts a user via AQL query language, via the db method in the x.py file
-        item = x.arango(res)
+        res = {"query":"INSERT :doc IN users RETURN NEW", "bindVars":{"doc":user}} # inserts a user via AQL query language, via the db method in the x.py file
+        item = x.db(res)
         return item
     except Exception as ex:
         ic(ex)
@@ -235,15 +231,11 @@ def _(page_number):
             raise ValueError("Page number must be greater than 0")
         
         offset = (page_number - 1) * x.ITEMS_PER_PAGE
-        query = {
-            "query": "FOR item IN items SORT item.item_created_at LIMIT @offset, @limit RETURN item",
-            "bindVars": {
-                "offset": offset,
-                "limit": x.ITEMS_PER_PAGE
-            }
-        }
-        result = x.arango(query)
-        items = result.get("result", [])
+        conn = x.db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM items ORDER BY item_created_at LIMIT ? OFFSET ?", (x.ITEMS_PER_PAGE, offset))
+        items = cursor.fetchall()
+        conn.close()
         ic(items)
 
         html = ""
@@ -308,10 +300,10 @@ def login_post():
         is_admin_role = validate_admin()
 
         res = {
-            "query": "FOR user IN users FILTER user.user_email == @user_email RETURN user",
+            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
             "bindVars": {"user_email": user_email}
         }
-        query_result = x.arango(res)
+        query_result = x.db(res)
         users = query_result.get("result", [])
 
         if users:
@@ -389,28 +381,18 @@ def update_profile():
         user["user_email"] = user_email
         user["user_password"] = hashed_password
 
-        update_query = {
-            "query": """
-                FOR user IN users
-                FILTER user._key == @key
-                UPDATE user WITH { 
-                    username: @username, 
-                    user_email: @user_email, 
-                    user_password: @user_password 
-                } IN users    
-                RETURN NEW
-            """,
-            "bindVars": {
-                "key": user["_key"],
-                "username": username,
-                "user_email": user_email,
-                "user_password": hashed_password
-            }
-        }
+        conn = sqlite3.connect("x.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users 
+            SET username = ?, user_email = ?, user_password = ?
+            WHERE user_id = ?
+        """, (username, user_email, hashed_password, user["user_id"]))
+        conn.commit()
+        conn.close()
 
-        result = x.arango(update_query)
-        updated_user = result.get("result", [])[0]
-        sessions[user_session_id] = updated_user
+        sessions[user_session_id] = user
+        response.set_cookie("success_message", "Profile changed successfully", path='/')
         response.status = 303
         response.set_header('Location', '/profile')
         return
@@ -436,11 +418,11 @@ def get_partner_properties():
             return "User ID not found in cookies"
 
         query = {
-            "query": "FOR item IN items FILTER item.item_user == @key RETURN item",
+            "query": "SELECT * FROM items FILTER item.item_user == :key RETURN item",
             "bindVars": {"key": active_user}
         }
 
-        your_items = x.arango(query)
+        your_items = x.db(query)
 
         # Render HTML template with retrieved items
         is_admin_role = validate_admin()
@@ -455,10 +437,10 @@ def get_partner_properties():
 def delete_item(item_id):
     try:
         delete_query = {
-            "query": "REMOVE { _key: @key } IN items",
+            "query": "REMOVE { _key: :key } FROM items",
             "bindVars": {"key": item_id}
         }
-        result = x.arango(delete_query)
+        result = x.db(delete_query)
 
         if result["error"]:
             return "Error deleting item"
@@ -479,7 +461,7 @@ def send_verification_email_delete():
         print(user_email)
         user_password = request.forms.get("user_password")
         print(user_password)
-        sender_email = "skroyer09@gmail.com"
+        sender_email = "skroyer09:gmail.com"
         password = "vkxq xwhj yaxn rqjs"
 
         message = MIMEMultipart("alternative")
@@ -533,10 +515,10 @@ def login_post():
         user_email = request.query.code
 
         res = {
-            "query": "FOR user IN users FILTER user.user_email == @user_email UPDATE user WITH { is_deleted: true } IN users",
+            "query": "FOR user IN users FILTER user.user_email == :user_email UPDATE user WITH { is_deleted: true } IN users",
             "bindVars": {"user_email": user_email}
         }
-        query_result = x.arango(res)
+        query_result = x.db(res)
         users = query_result.get("result", [])
 
         return "You account has been deleted. You can go back to the homepage now <a href='/'>Homepage</a>."
@@ -564,10 +546,10 @@ def _():
         # TODO: validate
         item_name = request.forms.get("item_name", "")
         item = {"name":item_name}
-        q = {   "query": "INSERT @item INTO items RETURN NEW",
+        q = {   "query": "INSERT :item INTO items RETURN NEW",
                 "bindVars":{"item":item}
              }
-        item = x.arango(q)
+        item = x.db(q)
         return item
     except Exception as ex:
         ic(ex)
@@ -584,10 +566,10 @@ def _(key):
         item_name = request.forms.get("item_name", "")
         item_key = { "_key" : key }
         item_data = { "name" : item_name }
-        q = {   "query": "UPDATE @item_key WITH @item_data IN items RETURN NEW",
+        q = {   "query": "UPDATE :item_key WITH :item_data FROM items RETURN NEW",
                 "bindVars":{"item_key":item_key, "item_data":item_data}
              }
-        item = x.arango(q)
+        item = x.db(q)
         return item
     except Exception as ex:
         ic(ex)
@@ -602,10 +584,10 @@ def _(id):
         item_key_data = id
         item_key_name = "_key"
         query = {
-            "query": "FOR item IN items FILTER item[@key_name] == @key_data RETURN item",
+            "query": "SELECT * FROM items FILTER item[:key_name] == :key_data RETURN item",
             "bindVars": {"key_name": item_key_name, "key_data": item_key_data}
         }
-        result = x.arango(query)
+        result = x.db(query)
         items = result.get("result", [])
         if not items:
             response.status = 404
@@ -644,8 +626,8 @@ def _():
                             """}
         blocked_query = {"query": "FOR user IN users FILTER user.blocked == true RETURN user"}
         
-        active_users = x.arango(active_query)
-        blocked_users = x.arango(blocked_query)
+        active_users = x.db(active_query)
+        blocked_users = x.db(blocked_query)
         
         ic(active_users)
         ic(blocked_users)
@@ -667,8 +649,8 @@ def _():
 @get("/users/<key>")
 def get_user(key):
     try:
-        q = {"query": "FOR user IN users FILTER user._key == @key RETURN user", "bindVars": {"key": key}}
-        users = x.arango(q)
+        q = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
+        users = x.db(q)
         if not users:
             response.status = 404
             return {"error": "User not found"}
@@ -687,18 +669,18 @@ def _(key):
             return "Invalid key format"
 
         ic(key)
-        res = x.arango({
+        res = x.db({
             "query": """
                 FOR user IN users
-                FILTER user._key == @key
+                FILTER user._key == :key
                 UPDATE user WITH { blocked: true } IN users RETURN NEW
             """, 
             "bindVars": {"key": key}
         })
         ic(res)
 
-        user_query = {"query": "FOR user IN users FILTER user._key == @key RETURN user", "bindVars": {"key": key}}
-        user_result = x.arango(user_query)
+        user_query = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
+        user_result = x.db(user_query)
         if user_result["result"]:
             user_email = user_result["result"][0]["user_email"]
             x.send_block_email(user_email)
@@ -739,10 +721,10 @@ def handle_forgot_password():
     try:
         email = request.forms.get("email")
         user_query = {
-            "query": "FOR user IN users FILTER user.user_email == @user_email RETURN user",
+            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
             "bindVars": {"user_email": email}
         }
-        user = x.arango(user_query)
+        user = x.db(user_query)
         if not user["result"]:
              return f"""
                 <template mix-target="[id='error-message']" mix-replace>
@@ -774,10 +756,10 @@ def reset_password(key):
         is_role = validate_user_role()
         is_admin_role = validate_admin()
         query = {
-            "query": "FOR user IN users FILTER user._key == @key RETURN user",
+            "query": "FOR user IN users FILTER user._key == :key RETURN user",
             "bindVars": {"key": key}
         }
-        result = x.arango(query)
+        result = x.db(query)
         users = result.get("result", [])
         if not users:
             response.status = 404
@@ -810,7 +792,7 @@ def handle_reset_password(key):
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             update_query = {
             "query": """
-                UPDATE { _key: @key, user_password: @password }
+                UPDATE { _key: :key, user_password: :password }
                 IN users
             """,
             "bindVars": {
@@ -818,7 +800,7 @@ def handle_reset_password(key):
                 "password": hashed_password
                 }
             }
-            x.arango(update_query)
+            x.db(update_query)
 
             return f"""
                     <template mix-target="[id='success-message']" mix-replace>
@@ -840,18 +822,18 @@ def _(key):
             return "Invalid key format"
 
         ic(key)
-        res = x.arango({
+        res = x.db({
             "query": """
                 FOR user IN users
-                FILTER user._key == @key
+                FILTER user._key == :key
                 UPDATE user WITH { blocked: false } IN users RETURN NEW
             """, 
             "bindVars": {"key": key}
         })
         ic(res)
 
-        user_query = {"query": "FOR user IN users FILTER user._key == @key RETURN user", "bindVars": {"key": key}}
-        user_result = x.arango(user_query)
+        user_query = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
+        user_result = x.db(user_query)
         if user_result["result"]:
             user_email = user_result["result"][0]["user_email"]
             x.send_unblock_email(user_email)
@@ -941,10 +923,10 @@ def add_item():
 
         # Save item to the database
         query = {
-            "query": "INSERT @item INTO items RETURN NEW",
+            "query": "INSERT :item INTO items RETURN NEW",
             "bindVars": {"item": item}
         }
-        x.arango(query)
+        x.db(query)
         response.status = 303
         response.set_header('Location', '/partner_properties')
         return
@@ -967,10 +949,10 @@ def _(key):
         item_key_data = key
         item_key_name = "_key"
         query = {
-            "query": "FOR item IN items FILTER item[@key_name] == @key_data RETURN item",
+            "query": "SELECT * FROM items FILTER item[:key_name] == :key_data RETURN item",
             "bindVars": {"key_name": item_key_name, "key_data": item_key_data}
         }
-        result = x.arango(query)
+        result = x.db(query)
         items = result.get("result", [])
         if not items:
             response.status = 404
@@ -1000,10 +982,10 @@ def update_item(key):
 
         # Fetch the existing item to get current image names
         query = {
-            "query": "FOR item IN items FILTER item._key == @key RETURN item",
+            "query": "SELECT * FROM items FILTER item._key == :key RETURN item",
             "bindVars": {"key": key}
         }
-        result = x.arango(query)
+        result = x.db(query)
         items = result.get("result", [])
         if not items:
             response.status = 404
@@ -1050,17 +1032,17 @@ def update_item(key):
         update_query = {
             "query": """
             UPDATE { 
-                _key: @key, 
-                item_name: @item_name, 
-                item_price_per_night: @item_price_per_night,
-                item_splash_image: @item_splash_image,
-                image2: @image2,
-                image3: @image3,
-                item_lat: @item_lat,
-                item_lon: @item_lon,
-                item_stars: @item_stars,
-                item_updated_at: @item_updated_at
-            } IN items
+                _key: :key, 
+                item_name: :item_name, 
+                item_price_per_night: :item_price_per_night,
+                item_splash_image: :item_splash_image,
+                image2: :image2,
+                image3: :image3,
+                item_lat: :item_lat,
+                item_lon: :item_lon,
+                item_stars: :item_stars,
+                item_updated_at: :item_updated_at
+            } FROM items
             """,
             "bindVars": {
                 "key": key,
@@ -1075,7 +1057,7 @@ def update_item(key):
                 "item_updated_at": int(time.time())
             }
         }
-        stuff = x.arango(update_query)
+        stuff = x.db(update_query)
         
         response.status = 303
         response.set_header('Location', '/partner_properties')
@@ -1090,11 +1072,11 @@ def _(key):
     try:
         ic(key)
         # Toggle the 'blocked' property of the item
-        res = x.arango({
+        res = x.db({
             "query": """
-                FOR item IN items
-                FILTER item._key == @key
-                UPDATE item WITH { blocked: item.blocked == true ? false : true } IN items
+                SELECT * FROM items
+                FILTER item._key == :key
+                UPDATE item WITH { blocked: item.blocked == true ? false : true } FROM items
                 RETURN NEW
             """, 
             "bindVars": {"key": key}
@@ -1108,8 +1090,8 @@ def _(key):
             blocked = updated_item["blocked"]
             
             # Fetch the item's email
-            email_query = {"query": "FOR item IN items FILTER item._key == @key RETURN item.item_email", "bindVars": {"key": key}}
-            email_result = x.arango(email_query)
+            email_query = {"query": "SELECT * FROM items FILTER item._key == :key RETURN item.item_email", "bindVars": {"key": key}}
+            email_result = x.db(email_query)
             ic(email_result)
 
             if email_result["result"]:
@@ -1143,10 +1125,10 @@ def toggle_booking():
         
         # Fetch the current booking status
         query = {
-            "query": "FOR item IN items FILTER item._key == @item_id RETURN item",
+            "query": "SELECT * FROM items FILTER item._key == :item_id RETURN item",
             "bindVars": {"item_id": item_id}
         }
-        result = x.arango(query)
+        result = x.db(query)
         items = result.get("result", [])
 
         if not items:
@@ -1159,15 +1141,15 @@ def toggle_booking():
         new_booking_status = not current_booking_status
         update_query = {
             "query": """
-                UPDATE { _key: @item_id } WITH { is_booked: @new_booking_status } IN items
+                UPDATE { _key: :item_id } WITH { is_booked: :new_booking_status } FROM items
                 RETURN NEW
             """,
             "bindVars": {"item_id": item_id, "new_booking_status": new_booking_status}
         }
-        x.arango(update_query)
+        x.db(update_query)
 
         # Fetch updated item
-        updated_item = x.arango(query).get("result", [])[0]
+        updated_item = x.db(query).get("result", [])[0]
 
         is_role = validate_user_role()
         is_logged = validate_user_logged()

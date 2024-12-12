@@ -1,5 +1,5 @@
 <div class="item">
-    <a href="/rooms/{{item['_key']}}">
+    <a href="/rooms/{{item['item_pk']}}">
         <div class="flex flex-col justify-between mt-2">
             <img src="/images/{{item['item_splash_image']}}" 
     class="w-full h-48 aspect-square object-cover rounded-lg">
@@ -23,9 +23,9 @@
         <span>
             nat
         </span>
-        <a href="/edit_item/{{item['_key']}}">Edit Property</a>
-        <form action="/delete_item/{{item['_key']}}" method="post">
-            <input type="hidden" name="item_id" value="{{ item['_key'] }}">
+        <a href="/edit_item/{{item['item_pk']}}">Edit Property</a>
+        <form action="/delete_item/{{item['item_pk']}}" method="post">
+            <input type="hidden" name="item_id" value="{{ item['item_pk'] }}">
             <button type="submit">Delete</button>
         </form>
     </div>

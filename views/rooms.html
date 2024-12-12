@@ -13,7 +13,7 @@
         <div class="flex flex-col lg:w-3/5">
             <div class="py-8 border-b border-neutral-200">
                 <h2 class="text-2xl font-medium">
-                    {{ item['_key'] }}
+                    {{ item['item_pk'] }}
                 </h2>
                 <p class="text-lg font-light">2 guests - 1 bedroom - 2 beds - 1 bath</p>
             </div>
@@ -53,13 +53,13 @@
             <p class="pb-6 font-light text-lg">Closes May 16, 8:59 AM</p>
             % if get("is_admin_role", True):
             <form class ="mt-4" action="/block_item/<key>" method="post">
-                <input type="hidden" name="item_id" value="{{ item['_key'] }}">
+                <input type="hidden" name="item_id" value="{{ item['item_pk'] }}">
                 <button type="submit">{{ 'unblock' if item['blocked'] else 'block' }}</button> 
             </form>
             % end
             % if get("is_customer_role", True):
             <form class ="mt-4" action="/toggle_booking" method="post">
-                <input type="hidden" name="item_id" value="{{ item['_key'] }}">
+                <input type="hidden" name="item_id" value="{{ item['item_pk'] }}">
                 <button type="submit">{{ 'Unbook' if item.get('is_booked') else 'Book' }}</button>
             </form>
             % else:

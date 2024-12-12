@@ -12,9 +12,3 @@ services:
     volumes:
       - ./:/app
 
-  sqlite:
-    image: nouchka/sqlite3
-    container_name: bottlesite_sqlite_container
-    volumes:
-      - ./sqlite_data:/data
-    command: tail -f /dev/null

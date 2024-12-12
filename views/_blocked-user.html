@@ -1,15 +1,15 @@
 % import x
 
-<div id="{{user['_key']}}" class="user grid grid-cols-3">
-    <form id="user_{{user['_key']}}">
+<div id="{{user['user_pk']}}" class="user grid grid-cols-3">
+    <form id="user_{{user['user_pk']}}">
         <input name="username" value="{{user['username']}}" 
         mix-check="{{x.USER_USERNAME_REGEX}}" mix-blur disabled> 
         <input name="user_email" value="{{user['user_email']}}" 
         mix-check="{{x.EMAIL_REGEX}}" mix-blur disabled>
     </form>
     <button
-    mix-put="/users/unblock/{{user['_key']}}"
-    mix-data="#user_{{user['_key']}}"
+    mix-put="/users/unblock/{{user['user_pk']}}"
+    mix-data="#user_{{user['user_pk']}}"
     mix-default="Unblock"
     mix-await="Unblocking...">
     Unblock
