@@ -25,6 +25,7 @@ INSERT INTO users VALUES (
     0 -- user_is_deleted (false)
 );
 
+SELECT * FROM users;
 
 DROP TABLE IF EXISTS items;
 

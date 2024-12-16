@@ -128,7 +128,7 @@ def _():
         selected_option = request.forms.get("option")
         
         # Check if user already exists
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE user_email = ?", (email,))
             existing_user = cursor.fetchone()
@@ -151,7 +151,7 @@ def _():
         }
         
         # Insert user into the database
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO users (username, user_email, user_password, role, verification_code, verified, is_deleted) 
@@ -182,7 +182,7 @@ def verify():
     try:
         verification_code = request.query.code
         print("Verification Code:", verification_code)  # Add this line for debugging
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE verification_code = ?", (verification_code,))
             user = cursor.fetchone()
@@ -190,7 +190,7 @@ def verify():
         if not user:
             return "Invalid verification code"
 
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE users SET verified = 1 WHERE verification_code = ?", (verification_code,))
             conn.commit()
@@ -346,7 +346,7 @@ def profile():
         is_logged = validate_user_logged()
         is_admin_role = validate_admin()
 
-        conn = sqlite3.connect("x.db")
+        conn = sqlite3.connect("company.db")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE user_pk = ?", (user['user_pk'],))
         user_data = cursor.fetchone()
@@ -398,7 +398,7 @@ def update_profile():
         user["user_email"] = user_email
         user["user_password"] = hashed_password
 
-        conn = sqlite3.connect("x.db")
+        conn = sqlite3.connect("company.db")
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE users 
@@ -430,7 +430,7 @@ def get_partner_properties():
             return "User ID not found in cookies"
 
         # Query to fetch user's items from SQLite
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM items WHERE user_pk = ?", (active_user,))
             your_items = cursor.fetchall()
@@ -529,7 +529,7 @@ def login_post():
     try:
         verification_code = request.query.code
 
-        conn = sqlite3.connect("x.db")
+        conn = sqlite3.connect("company.db")
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM users WHERE verification_code = ?", (verification_code,))
         user = cursor.fetchone()
@@ -580,7 +580,7 @@ def logout():
 def _(id):
     try:
 
-        conn = sqlite3.connect("x.db")
+        conn = sqlite3.connect("company.db")
         cursor = conn.cursor()
         cursor.row_factory = sqlite3.Row  # To access columns by name
         cursor.execute("SELECT * FROM items WHERE item_pk = ?", (id,))
@@ -985,7 +985,7 @@ def block_item(key):
         ic(key)
         
         # Toggle the 'blocked' property of the item
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT blocked FROM items WHERE item_pk = ?", (key,))
             result = cursor.fetchone()
@@ -999,7 +999,7 @@ def block_item(key):
 
         item_email = None
         # Check if the item_email column exists
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(items)")
             columns = cursor.fetchall()
@@ -1035,7 +1035,7 @@ def toggle_booking():
         item_pk = request.forms.get("item_pk")
         
         # Fetch the current booking status
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT is_booked FROM items WHERE item_pk = ?", (item_pk,))
             result = cursor.fetchone()
@@ -1046,13 +1046,13 @@ def toggle_booking():
         
         # Toggle the booking status
         new_booking_status = not current_booking_status
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("UPDATE items SET is_booked = ? WHERE item_pk = ?", (new_booking_status, item_pk))
             conn.commit()
 
         # Fetch updated item
-        with sqlite3.connect("x.db") as conn:
+        with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM items WHERE item_pk = ?", (item_pk,))
             updated_item = cursor.fetchone()
