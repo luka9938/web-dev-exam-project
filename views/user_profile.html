@@ -3,7 +3,7 @@
 <main id="profile" class="mt-16 p-4">
   <h1>Edit Your Profile</h1>
   <form action="/update_profile" method="post" class="flex flex-col gap-2 w-full mx-4 md:w-1/2">
-    <input name="user_name" class="w-full border" type="text" placeholder="Name" value="{{user['username']}}">
+    <input name="user_username" class="w-full border" type="text" placeholder="Name" value="{{user['user_username']}}">
     <input name="user_email" class="w-full border" type="email" placeholder="Email" value="{{user['user_email']}}">
     <input name="user_password" class="w-full border" type="password" placeholder="Password">
     <button type="submit">

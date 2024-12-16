@@ -117,47 +117,6 @@ def confirm_password():
     return user_confirm_password
 
 ##############################
-def setup_database():
-    try:
-        conn = db()
-        cursor = conn.cursor()
-
-        # Create users table
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-            user_pk TEXT PRIMARY KEY,
-            user_username TEXT,
-            user_name TEXT,
-            user_last_name TEXT,
-            user_email TEXT UNIQUE,
-            user_password TEXT,
-            user_role TEXT,
-            user_created_at INTEGER,
-            user_updated_at INTEGER,
-            user_is_verified INTEGER,
-            user_is_blocked INTEGER
-        ) WITHOUT ROWID''')
-
-        # Create items table
-        cursor.execute('''CREATE TABLE IF NOT EXISTS items (
-            item_pk TEXT PRIMARY KEY,
-            item_name TEXT,
-            item_splash_image TEXT,
-            item_lat TEXT,
-            item_lon TEXT,
-            item_stars REAL,
-            item_price_per_night REAL,
-            item_created_at INTEGER,
-            item_updated_at INTEGER
-        ) WITHOUT ROWID''')
-
-        conn.commit()
-        conn.close()
-    except Exception as ex:
-        ic(ex)
-    finally:
-        pass
-
-##############################
 def send_reset_email(email, key):
     from_email = 'joeybidenisbased@gmail.com'
     from_password = 'tdvi euik qgsa bzdf'

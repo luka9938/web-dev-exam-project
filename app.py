@@ -77,8 +77,6 @@ def serve_image(item_splash_image):
 @get("/")
 def home():
     try:
-        x.setup_database()
-        # Fetch items from the ArangoDB collection 'items'
         conn = x.db()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM items ORDER BY item_created_at LIMIT ?", (x.ITEMS_PER_PAGE,))
@@ -278,10 +276,21 @@ def _(page_number):
     finally:
         pass
 
-
 ##############################
 @get("/login")
-def login_post():
+def login():
+    try:
+        x.no_cache()
+        is_logged_in = validate_user_logged()
+        is_role = validate_user_role()
+        is_admin_role = validate_admin()
+        return template("login_wu_mixhtml.html", is_role=is_role, error_message=None, is_admin_role=is_admin_role)
+    except Exception as ex:
+        print(ex)
+        return str(ex)
+##############################
+@post("/login")
+def _():
     try:
         user_email = request.forms.get("user_email")
         user_password = request.forms.get("user_password")
