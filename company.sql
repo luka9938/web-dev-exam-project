@@ -1,34 +1,28 @@
 -- Hashed passsword is: $2b$12$V/cXqWN/M2vTnYUcXMB9oODcNBX/QorJekmaDkq1Z7aeD3I5ZAjfu
 
-DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS users; 
+CREATE TABLE users (
+    user_pk INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_username TEXT NOT NULL,
+    user_email TEXT UNIQUE NOT NULL,
+    user_password TEXT NOT NULL,
+    user_role TEXT,
+    user_is_verified INTEGER DEFAULT 0,
+    user_is_blocked INTEGER DEFAULT 0,
+    user_verification_code TEXT,
+    user_is_deleted INTEGER DEFAULT 0
+);
 
-CREATE TABLE users(
-    user_pk                 TEXT,
-    user_username           TEXT,
-    user_name               TEXT,
-    user_last_name          TEXT,
-    user_email              TEXT UNIQUE,
-    user_password           TEXT,
-    user_role               TEXT,
-    user_created_at         INTEGER,
-    user_updated_at         INTEGER,
-    user_is_verified        INTEGER,
-    user_is_blocked         INTEGER,
-    PRIMARY KEY(user_pk)
-) WITHOUT ROWID;
-
-INSERT INTO users VALUES(
-    "d11854217ecc42b2bb17367fe33dc8f4",
-    "johndoe",
-    "Jhon",
-    "Doe",
-    "admin@company.com",
-    "$2b$12$V/cXqWN/M2vTnYUcXMB9oODcNBX/QorJekmaDkq1Z7aeD3I5ZAjfu",
-    "admin",
-    1712674758,
-    0,
-    1,
-    0
+INSERT INTO users VALUES (
+    '257', -- user_pk
+    'lukas', -- user_username
+    'lukasryge@gmail.com', -- user_email
+    'password', -- user_password
+    'admin', -- user_role
+    1, -- user_is_verified (NULL because not provided)
+    0, -- user_is_blocked (NULL because not provided)
+    'cz0P8n', -- user_verification_code
+    0 -- user_is_deleted (false)
 );
 
 

@@ -309,7 +309,7 @@ def login_post():
                         sessions[user_session_id] = user
                         response.set_cookie("user_session_id", user_session_id)
                         response.set_cookie("role", user["role"], secret=x.COOKIE_SECRET)
-                        response.set_cookie("user_id", user["user_id"], secret=x.COOKIE_SECRET)
+                        response.set_cookie("user_pk", user["user_pk"], secret=x.COOKIE_SECRET)
                         response.set_cookie("user_email", user_email, secret=x.COOKIE_SECRET)
                         response.status = 303
                         response.set_header('Location', '/')
@@ -352,7 +352,7 @@ def profile():
 
         conn = sqlite3.connect("x.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user['user_id'],))
+        cursor.execute("SELECT * FROM users WHERE user_pk = ?", (user['user_pk'],))
         user_data = cursor.fetchone()
         conn.close()
 
@@ -360,7 +360,7 @@ def profile():
             return "User not found"
 
         user_data = {
-            'user_id': user_data[0],
+            'user_pk': user_data[0],
             'username': user_data[1],
             'user_email': user_data[2],
             'user_password': user_data[3]
@@ -407,8 +407,8 @@ def update_profile():
         cursor.execute("""
             UPDATE users 
             SET username = ?, user_email = ?, user_password = ?
-            WHERE user_id = ?
-        """, (username, user_email, hashed_password, user["user_id"]))
+            WHERE user_pk = ?
+        """, (username, user_email, hashed_password, user["user_pk"]))
         conn.commit()
         conn.close()
 
@@ -429,14 +429,14 @@ def get_partner_properties():
         is_logged = validate_user_logged()
         validate_user_role()
 
-        active_user = request.get_cookie("user_id")
+        active_user = request.get_cookie("user_pk")
         if not active_user:
             return "User ID not found in cookies"
 
         # Query to fetch user's items from SQLite
         with sqlite3.connect("x.db") as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM items WHERE user_id = ?", (active_user,))
+            cursor.execute("SELECT * FROM items WHERE user_pk = ?", (active_user,))
             your_items = cursor.fetchall()
 
         # Render HTML template with retrieved items
@@ -792,7 +792,7 @@ def add_item_form():
 @post("/add_item")
 def add_item():
     try:
-        item_user = request.get_cookie("user_id")
+        item_user = request.get_cookie("user_pk")
         item_email = request.get_cookie("user_email")
         # Get form data
         item_name = request.forms.get("item_name")
@@ -868,7 +868,7 @@ def add_item():
 @get('/edit_item/<key>')
 def edit_item_form(key):
     try:
-        user_id = x.validate_logged()
+        user_pk = x.validate_logged()
         x.validate_user_role()
         db_conn = x.db()
         cursor = db_conn.cursor()
