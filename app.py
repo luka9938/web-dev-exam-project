@@ -28,7 +28,7 @@ def validate_user_logged():
         return False
     
 def validate_user_role():
-    user_role = request.get_cookie("role")
+    user_role = request.get_cookie("user_role")
     if user_role == "partner":
         return True
     elif user_role == "customer":
@@ -37,14 +37,14 @@ def validate_user_role():
     return False
 
 def validate_admin():
-    user_role = request.get_cookie("role")
+    user_role = request.get_cookie("user_role")
     if user_role == "admin":
         return True
     else:
         return False
 
 def validate_customer():
-    user_role = request.get_cookie("role")
+    user_role = request.get_cookie("user_role")
     if user_role == "customer":
         return True
     else:
@@ -141,23 +141,23 @@ def _():
         
         # Create user dictionary
         user = {
-            "username": username, 
+            "user_username": username, 
             "user_email": email, 
             "user_password": hashed_password.decode('utf-8'), 
-            "role": selected_option, 
-            "verification_code": verification_code, 
-            "verified": False,
-            "is_deleted": False
+            "user_role": selected_option, 
+            "user_verification_code": verification_code, 
+            "user_is_verified": False,
+            "user_is_deleted": False
         }
         
         # Insert user into the database
         with sqlite3.connect("company.db") as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO users (username, user_email, user_password, role, verification_code, verified, is_deleted) 
+                INSERT INTO users (user_username, user_email, user_password, user_role, verification_code, user_is_verified, user_is_deleted) 
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (user["username"], user["user_email"], user["user_password"], user["role"], 
-                  user["verification_code"], user["verified"], user["is_deleted"]))
+            """, (user["user_username"], user["user_email"], user["user_password"], user["user_role"], 
+                  user["user_verification_code"], user["user_is_verified"], user["user_is_deleted"]))
             conn.commit()
         
         # Send verification email
@@ -304,7 +304,7 @@ def login_post():
                         user_session_id = str(uuid.uuid4())
                         sessions[user_session_id] = user
                         response.set_cookie("user_session_id", user_session_id)
-                        response.set_cookie("role", user["role"], secret=x.COOKIE_SECRET)
+                        response.set_cookie("user_role", user["user_role"], secret=x.COOKIE_SECRET)
                         response.set_cookie("user_pk", user["user_pk"], secret=x.COOKIE_SECRET)
                         response.set_cookie("user_email", user_email, secret=x.COOKIE_SECRET)
                         response.status = 303
