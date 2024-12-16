@@ -20,7 +20,7 @@ def dict_factory(cursor, row):
 
 ##############################
 def db():
-    db = sqlite3.connect(str(pathlib.Path(__file__).parent.resolve())+"/sqlite_data/company.db")  
+    db = sqlite3.connect(str(pathlib.Path(__file__).parent.resolve())+"/company.db")  
     db.row_factory = dict_factory
     return db
 

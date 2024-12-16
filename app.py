@@ -94,7 +94,7 @@ def home():
         return str(ex)
     finally:
         pass
-
+##############################
 @get("/signup")
 def _():
     try:
@@ -112,53 +112,60 @@ def _():
         return ex
     finally:
         pass
-
+##############################
 @post("/signup")
 def _():
     try:
-        username = x.validate_user_username() # validation of username using method from x.py file
-        print("username received: " + username)
-        email = x.validate_email() # validation of email using method from x.py file
-        print("email received: " + email)
+        # Validate username, email, and password
+        username = x.validate_user_username()
+        email = x.validate_email()
         password = x.validate_password()
-        print("password received: " + password)
+        
+        # Generate verification code
         verification_code = generate_verification_code()
+        
+        # Get selected option (role)
         selected_option = request.forms.get("option")
-        print(selected_option)
-        ic(username) # this is ice cream it displays error codes when something goes wrong
-        ic(password)
-        ic(email) # this is ice cream it displays error codes when something goes wrong
         
-        res = {
-            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
-            "bindVars": {"user_email": email}
-        }
-        query_result = x.db(res)
-        users = query_result.get("result", [])
-
-        if users:
-            for user in users:
-                user_email = user.get("user_email")
-
-                if user_email == email:
-                    return "user already exists"
+        # Check if user already exists
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE user_email = ?", (email,))
+            existing_user = cursor.fetchone()
         
+        if existing_user:
+            return "User already exists"
         
         # Hash the password using bcrypt
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-        user = {"username": username, 
-                "user_email": email, 
-                "user_password": hashed_password.decode('utf-8'), 
-                "role": selected_option, 
-                "verification_code": verification_code, 
-                "verified": False,
-                "is_deleted": False} # Save the hashed password
-        res = {"query": "INSERT :doc IN users RETURN NEW", "bindVars": {"doc": user}} # inserts a user via AQL query language, via the db method in the x.py file 
-        item = x.db(res)
+        
+        # Create user dictionary
+        user = {
+            "username": username, 
+            "user_email": email, 
+            "user_password": hashed_password.decode('utf-8'), 
+            "role": selected_option, 
+            "verification_code": verification_code, 
+            "verified": False,
+            "is_deleted": False
+        }
+        
+        # Insert user into the database
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO users (username, user_email, user_password, role, verification_code, verified, is_deleted) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (user["username"], user["user_email"], user["user_password"], user["role"], 
+                  user["verification_code"], user["verified"], user["is_deleted"]))
+            conn.commit()
+        
+        # Send verification email
         send_verification_email(email, verification_code)
+        
+        # Redirect to login page
         response.status = 303
         response.set_header('Location', '/login')
-        return
     except Exception as ex:
         ic(ex)
         if "user_name" in str(ex):
@@ -169,7 +176,7 @@ def _():
             """            
     finally:
         pass
-
+##############################
 @get("/verify")
 def verify():
     try:
@@ -198,18 +205,23 @@ def verify():
         return "An error occurred while verifying your email."
     finally:
         pass
-    
+##############################
 @post("/users")
-def _():
+def create_user():
     try:
-        username = x.validate_user_username() # validation of username using method from x.py file
-        email = x.validate_email() # validation of user_last_name using method from x.py file
-        ic(username) # this is ice cream it displays error codes when something goes wrong
-        ic(email) # this is ice cream it displays error codes when something goes wrong
-        user = {"username":username, "email":email} # defines a user by saving user as a document
-        res = {"query":"INSERT :doc IN users RETURN NEW", "bindVars":{"doc":user}} # inserts a user via AQL query language, via the db method in the x.py file
-        item = x.db(res)
-        return item
+        username = x.validate_user_username()  # Validation of username using method from x.py file
+        email = x.validate_email()  # Validation of email using method from x.py file
+        ic(username)  # This is ice cream it displays error codes when something goes wrong
+        ic(email)  # This is ice cream it displays error codes when something goes wrong
+        
+        # Insert user into SQLite database
+        db_conn = x.db()
+        cursor = db_conn.cursor()
+        cursor.execute("INSERT INTO users (username, email) VALUES (?, ?)", (username, email))
+        db_conn.commit()
+        db_conn.close()
+
+        return "User created successfully"
     except Exception as ex:
         ic(ex)
         if "username" in str(ex):
@@ -217,9 +229,9 @@ def _():
             <template mix-target="#message">
                 {ex.args[1]}
             </template>
-            """            
+            """
     finally:
-        pass
+        if "db" in locals(): x.db.close()
 
 
 ##############################
@@ -273,24 +285,6 @@ def _(page_number):
 
 ##############################
 @get("/login")
-def login():
-    try:
-        x.no_cache()
-        is_logged = validate_user_logged()
-        print("user is logged in?: ")
-        print(is_logged)
-        is_role = validate_user_role()
-        print("is user a partner?: ")
-        print(is_role)
-        is_admin_role = validate_admin()
-        return template("login_wu_mixhtml.html", is_logged=is_logged,is_role=is_role, error_message=None, is_admin_role=is_admin_role)
-    except Exception as ex:
-        print(ex)
-        return str(ex)
-
-sessions = {}
-
-@post("/login")
 def login_post():
     try:
         user_email = request.forms.get("user_email")
@@ -299,24 +293,24 @@ def login_post():
         is_role = validate_user_role()
         is_admin_role = validate_admin()
 
-        res = {
-            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
-            "bindVars": {"user_email": user_email}
-        }
-        query_result = x.db(res)
-        users = query_result.get("result", [])
+        conn = x.db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE user_email = ?", (user_email,))
+        users = cursor.fetchall()
+        print("Users found:", users)  # Add this line for debugging
+        conn.close()
 
         if users:
             for user in users:
-                if user.get("verified"):
-                    stored_hashed_password = user.get("user_password")
+                if user["verified"]:
+                    stored_hashed_password = user["user_password"]
                     if bcrypt.checkpw(user_password.encode('utf-8'), stored_hashed_password.encode('utf-8')):
                         user_session_id = str(uuid.uuid4())
                         sessions[user_session_id] = user
                         response.set_cookie("user_session_id", user_session_id)
-                        response.set_cookie("role", user.get("role"))
-                        response.set_cookie("user_id", user.get("_key"))
-                        response.set_cookie("user_email", user_email)
+                        response.set_cookie("role", user["role"], secret=x.COOKIE_SECRET)
+                        response.set_cookie("user_id", user["user_id"], secret=x.COOKIE_SECRET)
+                        response.set_cookie("user_email", user_email, secret=x.COOKIE_SECRET)
                         response.status = 303
                         response.set_header('Location', '/')
                         return
@@ -332,28 +326,55 @@ def login_post():
     except Exception as ex:
         print("An error occurred:", ex)
         return "An error occurred while processing your request"
+    finally:
+        if "db" in locals(): x.db.close()
 
 
 ##############################
 @get("/profile")
-def _():
+def profile():
     try:
         user_session_id = request.get_cookie("user_session_id")
-        if user_session_id not in sessions:
-            return "You are not logged in"
+        if not user_session_id:
+            response.status = 303
             response.set_header('Location', '/login')
             return
-        
+
+        if user_session_id not in sessions:
+            response.status = 303
+            response.set_header('Location', '/login')
+            return
+
         user = sessions[user_session_id]
         is_role = validate_user_role()
         is_logged = validate_user_logged()
         is_admin_role = validate_admin()
-        return template("user_profile", user=user, is_role=is_role, is_logged=is_logged, is_admin_role=is_admin_role)
+
+        conn = sqlite3.connect("x.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user['user_id'],))
+        user_data = cursor.fetchone()
+        conn.close()
+
+        if not user_data:
+            return "User not found"
+
+        user_data = {
+            'user_id': user_data[0],
+            'username': user_data[1],
+            'user_email': user_data[2],
+            'user_password': user_data[3]
+        }
+
+        success_message = request.get_cookie("success_message")
+        response.delete_cookie("success_message", path='/')
+
+        return template("user_profile", user=user_data, is_role=is_role, is_logged=is_logged, is_admin_role=is_admin_role, success_message=success_message)
     except Exception as ex:
-        ic(ex)
+        print("An error occurred:", ex)
         return {"error": str(ex)}
     finally:
-        pass
+        if "db" in locals(): x.db.close()
 
 ##############################
 
@@ -401,36 +422,33 @@ def update_profile():
         return str(ex)
     finally:
         pass
-    
+##############################
 @get("/partner_properties")
 def get_partner_properties():
     try:
         is_logged = validate_user_logged()
-        print("user is logged in?: ")
-        print(is_logged)
-        is_role = validate_user_role()
-        print("is user a partner?: ")
-        print(is_role)
-        is_admin_role = validate_admin()
+        validate_user_role()
 
         active_user = request.get_cookie("user_id")
         if not active_user:
             return "User ID not found in cookies"
 
-        query = {
-            "query": "SELECT * FROM items FILTER item.item_user == :key RETURN item",
-            "bindVars": {"key": active_user}
-        }
-
-        your_items = x.db(query)
+        # Query to fetch user's items from SQLite
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM items WHERE user_id = ?", (active_user,))
+            your_items = cursor.fetchall()
 
         # Render HTML template with retrieved items
         is_admin_role = validate_admin()
-        return template("partner_items.html", your_items=your_items['result'], is_logged=is_logged, is_admin_role=is_admin_role, is_role=is_role)
+        return template("partner_items.html", your_items=your_items, is_logged=is_logged, is_admin_role=is_admin_role)
 
     except Exception as ex:
         # Handle any exceptions
+        print("An error occurred:", ex)
         return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
     
 ##############################
 @post("/delete_item/<item_id>")
@@ -461,8 +479,8 @@ def send_verification_email_delete():
         print(user_email)
         user_password = request.forms.get("user_password")
         print(user_password)
-        sender_email = "skroyer09:gmail.com"
-        password = "vkxq xwhj yaxn rqjs"
+        sender_email = "joeybidenisbased@gmail.com"
+        password = "tdvi euik qgsa bzdf"
 
         message = MIMEMultipart("alternative")
         message["Subject"] = "Verify deletion of you account"
@@ -508,18 +526,25 @@ def send_verification_email_delete():
     finally:
         pass
     
-
+##############################
 @get("/Verify_delete")
 def login_post():
+    
     try:
-        user_email = request.query.code
+        verification_code = request.query.code
 
-        res = {
-            "query": "FOR user IN users FILTER user.user_email == :user_email UPDATE user WITH { is_deleted: true } IN users",
-            "bindVars": {"user_email": user_email}
-        }
-        query_result = x.db(res)
-        users = query_result.get("result", [])
+        conn = sqlite3.connect("x.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE verification_code = ?", (verification_code,))
+        user = cursor.fetchone()
+
+        if not user:
+            return "Verification failed. The user with this verification code does not exist."
+
+        # Mark the user as deleted in the database
+        cursor.execute("UPDATE users SET is_deleted = 1 WHERE verification_code = ?", (verification_code,))
+        conn.commit()
+        conn.close()
 
         return "You account has been deleted. You can go back to the homepage now <a href='/'>Homepage</a>."
         # return "login failed - incorrect email or password"
@@ -539,162 +564,93 @@ def _():
     response.set_header('Location', '/')
     return
 
-##############################
-@post("/arango/items")
-def _():
-    try:
-        # TODO: validate
-        item_name = request.forms.get("item_name", "")
-        item = {"name":item_name}
-        q = {   "query": "INSERT :item INTO items RETURN NEW",
-                "bindVars":{"item":item}
-             }
-        item = x.db(q)
-        return item
-    except Exception as ex:
-        ic(ex)
-        return ex
-    finally:
-        pass
-
-
-##############################
-@put("/arango/items/<key>")
-def _(key):
-    try:
-        # TODO: validate
-        item_name = request.forms.get("item_name", "")
-        item_key = { "_key" : key }
-        item_data = { "name" : item_name }
-        q = {   "query": "UPDATE :item_key WITH :item_data FROM items RETURN NEW",
-                "bindVars":{"item_key":item_key, "item_data":item_data}
-             }
-        item = x.db(q)
-        return item
-    except Exception as ex:
-        ic(ex)
-        return ex
-    finally:
-        pass
-
 @get("/rooms/<id>")
 def _(id):
     try:
-                
-        item_key_data = id
-        item_key_name = "_key"
-        query = {
-            "query": "SELECT * FROM items FILTER item[:key_name] == :key_data RETURN item",
-            "bindVars": {"key_name": item_key_name, "key_data": item_key_data}
-        }
-        result = x.db(query)
-        items = result.get("result", [])
-        if not items:
+
+        conn = sqlite3.connect("x.db")
+        cursor = conn.cursor()
+        cursor.row_factory = sqlite3.Row  # To access columns by name
+        cursor.execute("SELECT * FROM items WHERE item_pk = ?", (id,))
+        item = cursor.fetchone()
+
+        conn.close()
+
+        # If item is not found, return 404 error
+        if not item:
             response.status = 404
             return {"error": "Item not found"}
-        
-        item = items[0]  # There should be only one item with the specified ID
-        title = f"Item {id}"
-        ic(item)
-        is_logged = validate_user_logged()
-        print(is_logged)
-        is_role = validate_user_role()
 
+        # Convert sqlite3.Row to a dict
+        item_dict = dict(item)
+
+        # Calculate formatted price
+        price = int(item_dict["item_price_per_night"])
+        formatted_price = "{:,.0f}".format(price).replace(",", ".")
+
+        # Prepare data for template rendering
+        title = f"Item {id}"
+        is_logged = validate_user_logged()
+        is_role = validate_user_role()
         is_admin_role = validate_admin()
         is_customer_role=validate_customer()
 
+        # Render the template with the retrieved item and other data
         return template("rooms",
-                        id=id, 
+                        id=id,
                         title=title,
-                        item=item, is_logged=is_logged, is_role=is_role, is_admin_role=is_admin_role, is_customer_role=is_customer_role)
+                        item=item_dict,
+                        formatted_price=formatted_price,
+                        is_logged=is_logged,
+                        is_role=is_role,
+                        is_admin_role=is_admin_role,
+                        is_customer_role=is_customer_role)
     except Exception as ex:
-        ic(ex)
+        print("An error occurred:", ex)
         return {"error": str(ex)}
     finally:
-        pass
-    
-##############################
-@get("/users")
-def _():
-    try:
-        active_query = {"query": """
-                                    FOR user IN users 
-                                    LET isBlocked = HAS(user, 'blocked') ? user.blocked : false
-                                    FILTER isBlocked != true 
-                                    UPDATE user WITH { blocked: isBlocked } IN users 
-                                    RETURN NEW
-                            """}
-        blocked_query = {"query": "FOR user IN users FILTER user.blocked == true RETURN user"}
-        
-        active_users = x.db(active_query)
-        blocked_users = x.db(blocked_query)
-        
-        ic(active_users)
-        ic(blocked_users)
+        if "db" in locals(): x.db.close()
 
-        is_logged = validate_user_logged()
-        print("user is logged in?: ")
-        print(is_logged)
-        is_role = validate_user_role()
-        print("is user a partner?: ")
-        print(is_role)
-        is_admin_role = validate_admin()
-        
-        return template("users", active_users=active_users["result"], blocked_users=blocked_users["result"], is_logged=is_logged, is_role=is_role, is_admin_role=is_admin_role)
-    except Exception as ex:
-        ic(ex)
-        return {"error": str(ex)}
-
-##############################
-@get("/users/<key>")
-def get_user(key):
-    try:
-        q = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
-        users = x.db(q)
-        if not users:
-            response.status = 404
-            return {"error": "User not found"}
-        user = users[0]  # ArangoDB returns a list of results
-        ic(user)
-        return template("index", users=users["result"])
-    except Exception as ex:
-        ic(ex)
-        return {"error": str(ex)}
 ##############################
 @delete("/users/<key>")
-def _(key):
+def delete_user(key):
     try:
-        # Regex validation for key
-        if not re.match(r'^[1-9]\d*$', key):
+        # Validate key format
+        if not key.isdigit():
             return "Invalid key format"
 
+        # Log the user key
         ic(key)
-        res = x.db({
-            "query": """
-                FOR user IN users
-                FILTER user._key == :key
-                UPDATE user WITH { blocked: true } IN users RETURN NEW
-            """, 
-            "bindVars": {"key": key}
-        })
-        ic(res)
 
-        user_query = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
-        user_result = x.db(user_query)
-        if user_result["result"]:
-            user_email = user_result["result"][0]["user_email"]
-            x.send_block_email(user_email)
+        # Construct and execute SQL query to delete user from SQLite database
+        query = "DELETE FROM users WHERE user_pk = ?"
+        x.db.execute(query, (key,))
+        x.db.commit()
 
+        # Log the result of the deletion
+        ic("User deleted successfully")
+
+        # Retrieve user email before deletion for sending block email
+        user_email_query = "SELECT user_email FROM users WHERE user_pk = ?"
+        result = x.db.execute(user_email_query, (key,))
+        user_email = result.fetchone()["user_email"]
+
+        # Send block email
+        x.send_block_email(user_email)
+
+        # Return success message
         return f"""
         <template mix-target="[id='{key}']" mix-replace>
             <div class="mix-fade-out user_deleted" mix-ttl="2000">User blocked</div>
         </template>
         """
+
     except Exception as ex:
+        # Handle any exceptions
         ic(ex)
         return "An error occurred"
     finally:
-        pass
+        if "db" in locals(): x.db.close()
 
 ##############################
 
@@ -720,58 +676,47 @@ def forgot_password():
 def handle_forgot_password():
     try:
         email = request.forms.get("email")
-        user_query = {
-            "query": "FOR user IN users FILTER user.user_email == :user_email RETURN user",
-            "bindVars": {"user_email": email}
-        }
-        user = x.db(user_query)
-        if not user["result"]:
-             return f"""
-                <template mix-target="[id='error-message']" mix-replace>
-                <p style="color:red">
-                Your email is not registered
-                </p>
-                </template>
-                """
 
-        user = user["result"][0]
-        x.send_reset_email(email, user["_key"])
+        # Query user from SQLite database
+        user_query = "SELECT * FROM users WHERE user_email = ?"
+        result = x.db.execute(user_query, (email,))
+        user = result.fetchone()
 
-        # If email is correct and reset email is sent successfully, set forgot_password_message
-        return f"""
-                <template mix-target="[id='success-message']" mix-replace>
-                <p>An email has been sent to {email}</p>
-                </template>
-                """
+        if not user:
+            raise Exception("Email not found")
 
+        # Extract user data and send reset email
+        user_pk = user["user_pk"]
+        x.send_reset_email(email, user_pk)
+
+        return "Password reset email sent"
     except Exception as ex:
         ic(ex)
         return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
     
 ##############################
 @get("/reset-password/<key>")
 def reset_password(key):
     try:
-        is_logged = validate_user_logged()
-        is_role = validate_user_role()
-        is_admin_role = validate_admin()
-        query = {
-            "query": "FOR user IN users FILTER user._key == :key RETURN user",
-            "bindVars": {"key": key}
-        }
-        result = x.db(query)
-        users = result.get("result", [])
-        if not users:
+        db_conn = x.db()
+        cursor = db_conn.cursor()
+
+        cursor.execute("SELECT * FROM users WHERE _key = ?", (key,))
+        user = cursor.fetchone()
+        
+        db_conn.close()
+
+        if not user:
             response.status = 404
             return {"error": "User not found"}
         
-        user = users[0]  # There should be only one item with the specified ID
-        ic(user)
-        
-        return template("reset-password.html", key=key, user=user, is_logged=is_logged, is_role=is_role, is_admin_role=is_admin_role)
+        return template("reset-password.html", key=key, user=user)
     except Exception as ex:
-        ic(ex)
         return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
 
 ##############################
 @put("/reset-password/<key>")
@@ -781,73 +726,51 @@ def handle_reset_password(key):
         confirm_password = request.forms.get("confirm_password")
 
         if password != confirm_password:
-            return f"""
-                <template mix-target="[id='error-message']" mix-replace>
-                <p style="color:red">
-                Passwords do not match
-                </p>
-                </template>
-                """
-        else:
-            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-            update_query = {
-            "query": """
-                UPDATE { _key: :key, user_password: :password }
-                IN users
-            """,
-            "bindVars": {
-                "key": key,
-                "password": hashed_password
-                }
-            }
-            x.db(update_query)
+            return "Passwords do not match"
+        
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-            return f"""
-                    <template mix-target="[id='success-message']" mix-replace>
-                    <p>
-                    Your password has been reset
-                    </p>
-                    </template>
-                """
+        # Update user's password in SQLite database
+        update_query = "UPDATE users SET user_password = ? WHERE user_pk = ?"
+        x.db.execute(update_query, (hashed_password, key))
+        x.db.commit()
+
+        return "Password reset successfully"
     except Exception as ex:
         ic(ex)
         return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
 
 ##############################
 @put("/users/unblock/<key>")
-def _(key):
+def unblock_user(key):
     try:
         # Regex validation for key
         if not re.match(r'^[1-9]\d*$', key):
             return "Invalid key format"
 
-        ic(key)
-        res = x.db({
-            "query": """
-                FOR user IN users
-                FILTER user._key == :key
-                UPDATE user WITH { blocked: false } IN users RETURN NEW
-            """, 
-            "bindVars": {"key": key}
-        })
-        ic(res)
+        # Update user's blocked status in SQLite database
+        update_query = "UPDATE users SET blocked = 0 WHERE user_pk = ?"
+        x.db.execute(update_query, (key,))
+        x.db.commit()
 
-        user_query = {"query": "FOR user IN users FILTER user._key == :key RETURN user", "bindVars": {"key": key}}
-        user_result = x.db(user_query)
-        if user_result["result"]:
-            user_email = user_result["result"][0]["user_email"]
-            x.send_unblock_email(user_email)
+        # Fetch user's email
+        user_query = "SELECT user_email FROM users WHERE user_pk = ?"
+        user_email = x.db.execute(user_query, (key,)).fetchone()[0]
+        x.send_unblock_email(user_email)
 
         return f"""
         <template mix-target="[id='{key}']" mix-replace>
-            <div class="mix-fade-out user_deleted" mix-ttl="2000">User blocked</div>
+            <div class="mix-fade-out user_unblocked" mix-ttl="2000">User unblocked</div>
         </template>
         """
     except Exception as ex:
         ic(ex)
         return "An error occurred"
     finally:
-        pass
+        if "db" in locals(): x.db.close()
+
 ##############################
 UPLOAD_DIR = "uploads/images"
 ##############################
@@ -922,11 +845,17 @@ def add_item():
         }
 
         # Save item to the database
-        query = {
-            "query": "INSERT :item INTO items RETURN NEW",
-            "bindVars": {"item": item}
-        }
-        x.db(query)
+        insert_query = """
+        INSERT INTO items 
+        (item_name, item_splash_image, item_lat, item_lon, item_stars, item_price_per_night,
+        item_created_at, item_updated_at, item_image2, item_image3, item_user, item_email) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        x.db.execute(insert_query, (item["item_name"], item["item_splash_image"], item["item_lat"],
+                                    item["item_lon"], item["item_stars"], item["item_price_per_night"],
+                                    item["item_created_at"], item["item_updated_at"], item["item_image2"],
+                                    item["item_image3"], item["item_user"], item["item_email"]))
+        x.db.commit()
         response.status = 303
         response.set_header('Location', '/partner_properties')
         return
@@ -934,40 +863,31 @@ def add_item():
         print("An error occurred:", ex)
         return f"An error occurred: {str(ex)}"
     finally:
-        pass
+        if "db" in locals(): x.db.close()
 ##############################
 @get('/edit_item/<key>')
-def _(key):
+def edit_item_form(key):
     try:
-        is_logged = validate_user_logged()
-        print("user is logged in?: ")
-        print(is_logged)
-        is_role = validate_user_role()
-        print("is user a partner?: ")
-        print(is_role)
-        is_admin_role = validate_admin()
-        item_key_data = key
-        item_key_name = "_key"
-        query = {
-            "query": "SELECT * FROM items FILTER item[:key_name] == :key_data RETURN item",
-            "bindVars": {"key_name": item_key_name, "key_data": item_key_data}
-        }
-        result = x.db(query)
-        items = result.get("result", [])
-        if not items:
+        user_id = x.validate_logged()
+        x.validate_user_role()
+        db_conn = x.db()
+        cursor = db_conn.cursor()
+
+        cursor.execute("SELECT * FROM items WHERE _key = ?", (key,))
+        item = cursor.fetchone()
+
+        db_conn.close()
+
+        if not item:
             response.status = 404
             return {"error": "Item not found"}
-        
-        item = items[0]  # There should be only one item with the specified ID
+
         title = f"Edit your property"
-        ic(item)
-        return template("edit_item",
-                        key=key, 
-                        title=title,
-                        item=item, is_logged=is_logged, is_role=is_role, is_admin_role=is_admin_role)
+        return template("edit_item", key=key, title=title, item=item)
     except Exception as ex:
-        ic(ex)
-        return {"error": str(ex)}
+        return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
 
 ##############################
 @post('/edit_item/<key>')
@@ -980,131 +900,110 @@ def update_item(key):
         image2 = request.files.get('image2')
         image3 = request.files.get('image3')
 
-        # Fetch the existing item to get current image names
-        query = {
-            "query": "SELECT * FROM items FILTER item._key == :key RETURN item",
-            "bindVars": {"key": key}
-        }
-        result = x.db(query)
-        items = result.get("result", [])
-        if not items:
+        db_conn = x.db()
+        cursor = db_conn.cursor()
+
+        cursor.execute("SELECT * FROM items WHERE _key = ?", (key,))
+        item = cursor.fetchone()
+        if not item:
             response.status = 404
             return {"error": "Item not found"}
-        
-        item = items[0]  # There should be only one item with the specified ID
 
         # Process splash image
-        splash_image_filename = item.get('item_splash_image')
+        splash_image_filename = item['item_splash_image']
         if item_splash_image and item_splash_image.filename:
             splash_image_filename = f"{x.generate_random_string()}_{item_splash_image.filename}"
             splash_image_path = os.path.join(UPLOAD_DIR, splash_image_filename)
             item_splash_image.save(splash_image_path)
             # Delete old image
-            if item.get('item_splash_image'):
+            if item['item_splash_image']:
                 old_image_path = os.path.join(UPLOAD_DIR, item['item_splash_image'])
                 if os.path.exists(old_image_path):
                     os.remove(old_image_path)
 
         # Process additional images
-        image2_filename = item.get('image2')
+        image2_filename = item['item_image2']
         if image2 and image2.filename:
             image2_filename = f"{x.generate_random_string()}_{image2.filename}"
             image2_path = os.path.join(UPLOAD_DIR, image2_filename)
             image2.save(image2_path)
             # Delete old image
-            if item.get('image2'):
-                old_image_path = os.path.join(UPLOAD_DIR, item['image2'])
+            if item['item_image2']:
+                old_image_path = os.path.join(UPLOAD_DIR, item['item_image2'])
                 if os.path.exists(old_image_path):
                     os.remove(old_image_path)
 
-        image3_filename = item.get('image3')
+        image3_filename = item['item_image3']
         if image3 and image3.filename:
             image3_filename = f"{x.generate_random_string()}_{image3.filename}"
             image3_path = os.path.join(UPLOAD_DIR, image3_filename)
             image3.save(image3_path)
             # Delete old image
-            if item.get('image3'):
-                old_image_path = os.path.join(UPLOAD_DIR, item['image3'])
+            if item['item_image3']:
+                old_image_path = os.path.join(UPLOAD_DIR, item['item_image3'])
                 if os.path.exists(old_image_path):
                     os.remove(old_image_path)
 
-        # Update the item in the database
-        update_query = {
-            "query": """
-            UPDATE { 
-                _key: :key, 
-                item_name: :item_name, 
-                item_price_per_night: :item_price_per_night,
-                item_splash_image: :item_splash_image,
-                image2: :image2,
-                image3: :image3,
-                item_lat: :item_lat,
-                item_lon: :item_lon,
-                item_stars: :item_stars,
-                item_updated_at: :item_updated_at
-            } FROM items
-            """,
-            "bindVars": {
-                "key": key,
-                "item_name": item_name,
-                "item_price_per_night": int(item_price_per_night),
-                "item_splash_image": splash_image_filename,
-                "image2": image2_filename,
-                "image3": image3_filename,
-                "item_lat": round(random.uniform(55.65, 55.7), 4),
-                "item_lon": round(random.uniform(12.55, 12.6), 4),
-                "item_stars": round(random.uniform(3.0, 5.0), 1),
-                "item_updated_at": int(time.time())
-            }
-        }
-        stuff = x.db(update_query)
+        cursor.execute("""
+            UPDATE items SET 
+            item_name = ?, 
+            item_price_per_night = ?, 
+            item_splash_image = ?, 
+            item_image2 = ?, 
+            item_image3 = ? 
+            WHERE _key = ?
+            """, (item_name, item_price_per_night, splash_image_filename, image2_filename, image3_filename, key))
+        db_conn.commit()
         
+        db_conn.close()
+
         response.status = 303
         response.set_header('Location', '/partner_properties')
         return
     except Exception as ex:
         return {"error": str(ex)}
+    finally:
+        if "db" in locals(): x.db.close()
 
 
 ##############################
 @post("/block_item/<key>")
-def _(key):
+def block_item(key):
     try:
         ic(key)
-        # Toggle the 'blocked' property of the item
-        res = x.db({
-            "query": """
-                SELECT * FROM items
-                FILTER item._key == :key
-                UPDATE item WITH { blocked: item.blocked == true ? false : true } FROM items
-                RETURN NEW
-            """, 
-            "bindVars": {"key": key}
-        })
-
-        ic(res)
-
-        # Extract the updated item from the result
-        if res["result"]:
-            updated_item = res["result"][0]
-            blocked = updated_item["blocked"]
-            
-            # Fetch the item's email
-            email_query = {"query": "SELECT * FROM items FILTER item._key == :key RETURN item.item_email", "bindVars": {"key": key}}
-            email_result = x.db(email_query)
-            ic(email_result)
-
-            if email_result["result"]:
-                item_email = email_result["result"][0]
-                
-                # Check if the email exists
-                if item_email:
-                    # Send email based on the item's blocked status
-                    if blocked:
-                        x.send_block_property_email(item_email)
-                    else:
-                        x.send_unblock_property_email(item_email)
         
+        # Toggle the 'blocked' property of the item
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT blocked FROM items WHERE item_pk = ?", (key,))
+            result = cursor.fetchone()
+            if not result:
+                return "Item not found"
+
+            current_blocked_status = result[0]
+            new_blocked_status = not current_blocked_status
+            cursor.execute("UPDATE items SET blocked = ? WHERE item_pk = ?", (int(new_blocked_status), key))
+            conn.commit()
+
+        item_email = None
+        # Check if the item_email column exists
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(items)")
+            columns = cursor.fetchall()
+            if any(column[1] == 'item_email' for column in columns):
+                cursor.execute("SELECT item_email FROM items WHERE item_pk = ?", (key,))
+                result = cursor.fetchone()
+                if result:
+                    item_email = result[0]
+        
+        # Send email based on the item's blocked status, if item_email exists
+        if item_email:
+            if new_blocked_status:
+                x.send_block_property_email(item_email)
+            else:
+                x.send_unblock_property_email(item_email)
+
         response.status = 303
         response.set_header('Location', '/')
         return
@@ -1112,7 +1011,7 @@ def _(key):
         ic(ex)
         return "An error occurred"
     finally:
-        pass
+        if "db" in locals(): x.db.close()
 
 
 ##############################
@@ -1121,44 +1020,60 @@ def _(key):
 @post("/toggle_booking")
 def toggle_booking():
     try:
-        item_id = request.forms.get("item_id")
+        item_pk = request.forms.get("item_pk")
         
         # Fetch the current booking status
-        query = {
-            "query": "SELECT * FROM items FILTER item._key == :item_id RETURN item",
-            "bindVars": {"item_id": item_id}
-        }
-        result = x.db(query)
-        items = result.get("result", [])
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT is_booked FROM items WHERE item_pk = ?", (item_pk,))
+            result = cursor.fetchone()
+            if result is None:
+                return "Item not found"
 
-        if not items:
-            return "Item not found"
-
-        item = items[0]
-        current_booking_status = item.get("is_booked", False)
+            current_booking_status = result[0]
         
         # Toggle the booking status
         new_booking_status = not current_booking_status
-        update_query = {
-            "query": """
-                UPDATE { _key: :item_id } WITH { is_booked: :new_booking_status } FROM items
-                RETURN NEW
-            """,
-            "bindVars": {"item_id": item_id, "new_booking_status": new_booking_status}
-        }
-        x.db(update_query)
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE items SET is_booked = ? WHERE item_pk = ?", (new_booking_status, item_pk))
+            conn.commit()
 
         # Fetch updated item
-        updated_item = x.db(query).get("result", [])[0]
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM items WHERE item_pk = ?", (item_pk,))
+            updated_item = cursor.fetchone()
+
+        if updated_item is None:
+            return "Updated item not found"
+
+        # Construct the item dictionary
+        item_dict = {
+            'item_pk': updated_item[0],
+            'item_name': updated_item[1],
+            'item_splash_image': updated_item[2],
+            'item_lat': updated_item[3],
+            'item_lon': updated_item[4],
+            'item_stars': updated_item[5],
+            'item_price_per_night': updated_item[6],
+            'item_created_at': updated_item[7],
+            'item_updated_at': updated_item[8],
+            'blocked': updated_item[9],
+            'is_booked': updated_item[10]
+        }
 
         is_role = validate_user_role()
         is_logged = validate_user_logged()
         is_admin_role = validate_admin()
 
-        return template("rooms", id=item_id, title=f"Item {item_id}", item=updated_item, is_role=is_role, is_admin_role=is_admin_role, is_logged=is_logged)
+        # Pass necessary data to the template
+        return template("rooms", id=item_pk, title=f"Item {item_pk}", item=item_dict, is_role=is_role, is_admin_role=is_admin_role, is_logged=is_logged, formatted_price=updated_item[6])
     except Exception as ex:
         print("An error occurred:", ex)
         return str(ex)
+    finally:
+        if "db" in locals(): x.db.close()
 
 #############################
 try:
