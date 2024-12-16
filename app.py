@@ -181,30 +181,26 @@ def _():
 def verify():
     try:
         verification_code = request.query.code
-        res = {
-            "query": "FOR user IN users FILTER user.verification_code == :code RETURN user",
-            "bindVars": {"code": verification_code}
-        }
-        query_result = x.db(res)
-        users = query_result.get("result", [])
+        print("Verification Code:", verification_code)  # Add this line for debugging
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE verification_code = ?", (verification_code,))
+            user = cursor.fetchone()
 
-        if not users:
+        if not user:
             return "Invalid verification code"
-        
-        user = users[0]
-        user["verified"] = True
-        update_res = {
-            "query": "UPDATE :user WITH {verified: true} IN users RETURN NEW",
-            "bindVars": {"user": user}
-        }
-        x.db(update_res)
 
-        return "You email has been verified. You can now log in at <a href='/login'>Login</a>."
+        with sqlite3.connect("x.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET verified = 1 WHERE verification_code = ?", (verification_code,))
+            conn.commit()
+
+        return "Your email has been verified. You can now log in at <a href='/login'>Login</a>."
     except Exception as ex:
         print("An error occurred:", ex)
         return "An error occurred while verifying your email."
     finally:
-        pass
+         if "db" in locals(): x.db.close()
 ##############################
 @post("/users")
 def create_user():
@@ -554,15 +550,31 @@ def login_post():
 
 ##############################
 @get("/logout")
-def _():
-    user_session_id = request.get_cookie("user_session_id")
-    if user_session_id in sessions:
-        del sessions[user_session_id]
-    response.delete_cookie("user_session_id")
-    response.delete_cookie("role")
-    response.status = 303
-    response.set_header('Location', '/')
-    return
+def logout():
+    try:
+        # Retrieve the user session ID from cookies
+        user_session_id = request.get_cookie("user_session_id")
+
+        # Check if the session exists in the sessions dictionary and delete it
+        if user_session_id in sessions:
+            del sessions[user_session_id]
+
+        # Delete the session ID and role cookies
+        response.delete_cookie("user_session_id")
+        response.delete_cookie("user_role")
+        response.delete_cookie("user_email")
+        response.delete_cookie("user_pk")
+
+        # Redirect the user to the homepage
+        response.status = 303
+        response.set_header('Location', '/')
+        return
+    except Exception as ex:
+        print("An error occurred during logout:", ex)
+        return "An error occurred during logout."
+    finally:
+        if "db" in locals(): x.db.close()
+
 
 @get("/rooms/<id>")
 def _(id):
